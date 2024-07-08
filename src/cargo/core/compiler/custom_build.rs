@@ -32,10 +32,10 @@
 //! [instructions]: https://doc.rust-lang.org/cargo/reference/build-scripts.html#outputs-of-the-build-script
 
 use super::{fingerprint, BuildRunner, Job, Unit, Work};
-use crate::core::compiler::artifact;
 use crate::core::compiler::build_runner::Metadata;
 use crate::core::compiler::fingerprint::DirtyReason;
 use crate::core::compiler::job_queue::JobState;
+use crate::core::compiler::{artifact, CompileKind};
 use crate::core::{profiles::ProfileRoot, PackageId, Target};
 use crate::util::errors::CargoResult;
 use crate::util::internal;
@@ -277,10 +277,17 @@ fn build_work(build_runner: &mut BuildRunner<'_, '_>, unit: &Unit) -> CargoResul
     let to_exec = to_exec.into_os_string();
     let mut cmd = build_runner.compilation.host_process(to_exec, &unit.pkg)?;
     let debug = unit.profile.debuginfo.is_turned_on();
+    let target_is_json = // TODO: fix it after #14197 merged, use `unit.kind.has_json_ext_ignore_case`
+        matches!(unit.kind, CompileKind::Target(ct) if ct.rustc_target().ends_with(".json"));
+
     cmd.env("OUT_DIR", &script_out_dir)
         .env("CARGO_MANIFEST_DIR", unit.pkg.root())
         .env("NUM_JOBS", &bcx.jobs().to_string())
         .env("TARGET", bcx.target_data.short_name(&unit.kind))
+        .env(
+            "TARGET_IS_CUSTOM",
+            target_is_json.then_some("1").unwrap_or_default(),
+        )
         .env("DEBUG", debug.to_string())
         .env("OPT_LEVEL", &unit.profile.opt_level)
         .env(
