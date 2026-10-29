@@ -176,7 +176,6 @@ pub struct InheritablePackage {
 #[cfg_attr(feature = "unstable-schema", derive(schemars::JsonSchema))]
 pub struct TomlPackage {
     pub edition: Option<InheritableString>,
-    #[cfg_attr(feature = "unstable-schema", schemars(with = "Option<String>"))]
     pub rust_version: Option<InheritableRustVersion>,
     #[cfg_attr(feature = "unstable-schema", schemars(with = "Option<String>"))]
     pub name: Option<PackageName>,

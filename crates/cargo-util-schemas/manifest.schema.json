@@ -232,9 +232,13 @@
           ]
         },
         "rust-version": {
-          "type": [
-            "string",
-            "null"
+          "anyOf": [
+            {
+              "$ref": "#/$defs/InheritableField"
+            },
+            {
+              "type": "null"
+            }
           ]
         },
         "name": {
