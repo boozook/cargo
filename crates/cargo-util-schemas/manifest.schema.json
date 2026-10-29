@@ -1491,7 +1491,18 @@
       }
     },
     "TomlOptLevel": {
-      "type": "string"
+      "type": [
+        "string",
+        "integer"
+      ],
+      "enum": [
+        0,
+        1,
+        2,
+        3,
+        "s",
+        "z"
+      ]
     },
     "TomlDebugInfo": {
       "type": [

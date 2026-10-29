@@ -7,8 +7,6 @@
 
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
-#[cfg(feature = "unstable-schema")]
-use std::collections::HashMap;
 use std::fmt::{self, Display, Write};
 use std::path::PathBuf;
 use std::str;
@@ -1104,6 +1102,7 @@ impl<'de> de::Deserialize<'de> for ProfilePackageSpec {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 #[cfg_attr(feature = "unstable-schema", derive(schemars::JsonSchema))]
+#[cfg_attr(feature = "unstable-schema", schemars(transform = <Self as schema::JsonSchemaEnumExtension>::transform))]
 pub struct TomlOptLevel(pub String);
 
 impl ser::Serialize for TomlOptLevel {
@@ -1142,40 +1141,26 @@ impl<'de> de::Deserialize<'de> for TomlOptLevel {
     }
 }
 
+#[cfg(feature = "unstable-schema")]
+impl schema::JsonSchemaEnumExtension for TomlOptLevel {
+    const TYPES: &'static [&str] = &["integer"];
+    fn transform_enum_variants(variants: &mut Vec<serde_json::Value>) {
+        variants.reserve(6);
+        variants.extend((0..=3).map(Into::into));
+        variants.extend_from_slice(&["s".into(), "z".into()]);
+    }
+}
+
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Hash, PartialOrd, Ord)]
 #[cfg_attr(feature = "unstable-schema", derive(schemars::JsonSchema))]
 #[cfg_attr(feature = "unstable-schema", schemars(rename_all = "kebab-case"))]
-#[cfg_attr(feature = "unstable-schema", schemars(transform = Self::schema_add_aliases))]
+#[cfg_attr(feature = "unstable-schema", schemars(transform = <Self as schema::JsonSchemaEnumExtension>::transform))]
 pub enum TomlDebugInfo {
     None,
     LineDirectivesOnly,
     LineTablesOnly,
     Limited,
     Full,
-}
-
-#[cfg(feature = "unstable-schema")]
-impl TomlDebugInfo {
-    fn schema_add_aliases(schema: &mut schemars::Schema) {
-        use serde_json::Value;
-
-        if let Some(obj) = schema.as_object_mut() {
-            obj.get_mut("type").map(|v| match v {
-                Value::Array(v) => v.extend_from_slice(&["integer".into(), "boolean".into()]),
-                Value::String(s) => {
-                    let s = std::mem::replace(s, String::with_capacity(0));
-                    *v = Value::Array(vec![s.into(), "integer".into(), "boolean".into()])
-                }
-                _ => *v = Value::Array(vec!["string".into(), "integer".into(), "boolean".into()]),
-            });
-
-            if let Some(variants) = obj.get_mut("enum").and_then(|v| v.as_array_mut()) {
-                variants.reserve(5);
-                variants.extend((0..=2).map(Into::into));
-                variants.extend_from_slice(&[false.into(), true.into()]);
-            }
-        }
-    }
 }
 
 impl Display for TomlDebugInfo {
@@ -1252,6 +1237,17 @@ impl<'de> de::Deserialize<'de> for TomlDebugInfo {
                 Ok(debuginfo)
             })
             .deserialize(d)
+    }
+}
+
+#[cfg(feature = "unstable-schema")]
+impl schema::JsonSchemaEnumExtension for TomlDebugInfo {
+    const TYPES: &'static [&str] = &["integer", "boolean"];
+
+    fn transform_enum_variants(variants: &mut Vec<serde_json::Value>) {
+        variants.reserve(5);
+        variants.extend((0..=2).map(Into::into));
+        variants.extend_from_slice(&[false.into(), true.into()]);
     }
 }
 
@@ -1679,7 +1675,7 @@ pub struct TomlLintConfig {
     #[serde(flatten)]
     #[cfg_attr(
         feature = "unstable-schema",
-        schemars(with = "HashMap<String, TomlValueWrapper>")
+        schemars(with = "std::collections::HashMap<String, TomlValueWrapper>")
     )]
     pub config: toml::Table,
 }
@@ -1855,9 +1851,74 @@ impl<'de> de::Deserialize<'de> for PathValue {
 pub struct UnresolvedError;
 
 #[cfg(feature = "unstable-schema")]
-#[test]
-fn dump_manifest_schema() {
-    let schema = schemars::schema_for!(crate::manifest::TomlManifest);
-    let dump = serde_json::to_string_pretty(&schema).unwrap();
-    snapbox::assert_data_eq!(dump, snapbox::file!("../../manifest.schema.json").raw());
+mod schema {
+    use core::str::FromStr;
+
+    use super::*;
+    use serde_json::{Map, Value};
+
+    pub trait JsonSchemaEnumExtension {
+        /// Extra types.
+        const TYPES: &'static [&str];
+
+        fn transform_type(obj: &mut Map<String, Value>) {
+            if Self::TYPES.is_empty() {
+                return;
+            }
+
+            if let Some(v) = obj.get_mut("type") {
+                match v {
+                    Value::Array(v) => {
+                        v.extend(Self::TYPES.iter().filter_map(|&s| Value::from_str(s).ok()))
+                    }
+                    // reuse this existing string already wrapped in Value:
+                    Value::String(_) => {
+                        let s = std::mem::replace(v, Value::Null);
+                        let mut arr = Vec::with_capacity(1 + Self::TYPES.len());
+                        arr.extend(
+                            Self::TYPES
+                                .iter()
+                                .filter(|&&ext| s != ext)
+                                .map(|&s| Value::from(s)),
+                        );
+                        arr.insert(0, s);
+                        *v = Value::Array(arr);
+                    }
+                    _ => *v = Self::TYPES.into(),
+                }
+            } else {
+                obj["type"] = Self::TYPES.into();
+            }
+        }
+
+        /// Is this type must be enum. Allows to create `enum`-field is it doesn't exists.
+        const ENUM: bool = true;
+
+        fn transform_enum(obj: &mut Map<String, Value>) {
+            if let Some(variants) = obj.get_mut("enum").and_then(|v| v.as_array_mut()) {
+                Self::transform_enum_variants(variants);
+            } else if Self::ENUM {
+                let mut variants = Default::default();
+                Self::transform_enum_variants(&mut variants);
+                obj.insert("enum".into(), Value::Array(variants));
+            }
+        }
+
+        /// Mutate, usually add extra enum variants.
+        fn transform_enum_variants(variants: &mut Vec<Value>);
+
+        fn transform(schema: &mut schemars::Schema) {
+            if let Some(obj) = schema.as_object_mut() {
+                Self::transform_type(obj);
+                Self::transform_enum(obj);
+            }
+        }
+    }
+
+    #[test]
+    fn dump_manifest_schema() {
+        let schema = schemars::schema_for!(crate::manifest::TomlManifest);
+        let dump = serde_json::to_string_pretty(&schema).unwrap();
+        snapbox::assert_data_eq!(dump, snapbox::file!("../../manifest.schema.json").raw());
+    }
 }
