@@ -1859,8 +1859,6 @@ pub struct UnresolvedError;
 
 #[cfg(feature = "unstable-schema")]
 mod schema {
-    use core::str::FromStr;
-
     use super::*;
     use serde_json::{Map, Value};
 
@@ -1875,9 +1873,7 @@ mod schema {
 
             if let Some(v) = obj.get_mut("type") {
                 match v {
-                    Value::Array(v) => {
-                        v.extend(Self::TYPES.iter().filter_map(|&s| Value::from_str(s).ok()))
-                    }
+                    Value::Array(v) => v.extend(Self::TYPES.iter().map(|&s| Value::from(s))),
                     // reuse this existing string already wrapped in Value:
                     Value::String(_) => {
                         let s = std::mem::replace(v, Value::Null);
