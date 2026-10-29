@@ -1726,6 +1726,7 @@ impl<'de> de::Deserialize<'de> for InvalidCargoFeatures {
 /// but is always stored as a vector.
 #[derive(Clone, Debug, Serialize, Eq, PartialEq, PartialOrd, Ord)]
 #[cfg_attr(feature = "unstable-schema", derive(schemars::JsonSchema))]
+#[cfg_attr(feature = "unstable-schema", schemars(transform = <Self as schema::JsonSchemaEnumExtension>::transform))]
 pub struct StringOrVec(pub Vec<String>);
 
 impl StringOrVec {
@@ -1745,6 +1746,12 @@ impl<'de> de::Deserialize<'de> for StringOrVec {
             .seq(|value| value.deserialize().map(StringOrVec))
             .deserialize(deserializer)
     }
+}
+
+#[cfg(feature = "unstable-schema")]
+impl schema::JsonSchemaEnumExtension for StringOrVec {
+    const TYPES: &'static [&str] = &["string"];
+    const ENUM: bool = false;
 }
 
 #[derive(Clone, Debug, Serialize, Eq, PartialEq)]
@@ -1905,7 +1912,7 @@ mod schema {
         }
 
         /// Mutate, usually add extra enum variants.
-        fn transform_enum_variants(variants: &mut Vec<Value>);
+        fn transform_enum_variants(_variants: &mut Vec<Value>) {}
 
         fn transform(schema: &mut schemars::Schema) {
             if let Some(obj) = schema.as_object_mut() {

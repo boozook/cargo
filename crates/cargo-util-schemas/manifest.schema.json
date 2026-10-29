@@ -568,7 +568,10 @@
     },
     "StringOrVec": {
       "description": "This can be parsed from either a TOML string or array,\nbut is always stored as a vector.",
-      "type": "array",
+      "type": [
+        "array",
+        "string"
+      ],
       "items": {
         "type": "string"
       }
