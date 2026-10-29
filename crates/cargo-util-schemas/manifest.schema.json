@@ -516,7 +516,10 @@
       ]
     },
     "WorkspaceValue": {
-      "type": "boolean"
+      "type": "boolean",
+      "enum": [
+        true
+      ]
     },
     "InheritableField2": {
       "description": "An enum that allows for inheriting keys from a workspace in a Cargo.toml.",

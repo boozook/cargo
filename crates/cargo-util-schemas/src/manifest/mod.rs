@@ -640,7 +640,18 @@ impl Default for TomlInheritedField {
 #[serde(try_from = "bool")]
 #[serde(into = "bool")]
 #[cfg_attr(feature = "unstable-schema", derive(schemars::JsonSchema))]
+#[cfg_attr(feature = "unstable-schema", schemars(transform = <Self as schema::JsonSchemaEnumExtension>::transform))]
 struct WorkspaceValue;
+
+// exclude `false` variant
+impl schema::JsonSchemaEnumExtension for WorkspaceValue {
+    const TYPES: &'static [&str] = &[];
+    const ENUM: bool = true;
+
+    fn transform_enum_variants(variants: &mut Vec<serde_json::Value>) {
+        variants.push(true.into());
+    }
+}
 
 impl TryFrom<bool> for WorkspaceValue {
     type Error = String;
